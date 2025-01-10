@@ -194,4 +194,8 @@
 		</div>
 	{/if}
 </div>
+<div class="absolute bottom-0 p-2 text-xs text-gray-500">
+	Your files never leave your computer
 </div>
+</div>
+
