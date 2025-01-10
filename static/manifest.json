@@ -1,0 +1,22 @@
+{
+    "name": "Find & Replace",
+    "short_name": "Find & Replace",
+    "description": "A simple tool to find and replace text in a file using a csv file",
+    "icons": [
+        {
+            "src": "/android-chrome-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "/android-chrome-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ],
+    "theme_color": "#34495e",
+    "background_color": "#313944",
+    "start_url": ".",
+    "scope": "/",
+    "display": "standalone"
+}
