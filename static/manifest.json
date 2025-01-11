@@ -1,7 +1,7 @@
 {
     "name": "Find & Replace",
     "short_name": "Find & Replace",
-    "description": "A simple tool to find and replace text in a file using a csv file",
+    "description": "Use a CSV/TSV file to perform multiple find and replace operations",
     "icons": [
         {
             "src": "/android-chrome-192x192.png",

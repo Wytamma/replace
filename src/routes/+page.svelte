@@ -174,8 +174,7 @@ function resetDropzone() {
 			<span class="text-6xl sm:text-8xl">✏️</span>
 		</div>
 		<div class="flex align-middle justify-center items-center text-center">
-			<p>Use a CSV/TSV to perform multiple find and replace operations</p>
-			
+			<p>Use a CSV/TSV file to perform multiple find and replace operations</p>
 		</div>
 		<div class="flex flex-col w-full ">
 			<FileDropzone name="mapFile" accept=".tsv,.csv" on:change={handleFileChange} bind:files={mapFile} >
