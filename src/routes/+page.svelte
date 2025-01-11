@@ -1,14 +1,26 @@
 <script lang="ts">
 	import { FileDropzone } from '@skeletonlabs/skeleton';
+	import { type ModalSettings, type ModalComponent } from '@skeletonlabs/skeleton';
+	import { getModalStore } from '@skeletonlabs/skeleton';
 	
 	import Papa from 'papaparse';
 	import * as streamSaver from 'streamsaver';
 
-
-
 	import ReplaceBar from "$lib/ReplaceBar.svelte";
 	import IndexSelect from "$lib/IndexSelect.svelte";
-	
+	import Help from "$lib/Help.svelte";
+				
+	const modalStore = getModalStore();
+	const modalComponent: ModalComponent = { ref: Help };
+	const helpModal: ModalSettings = {
+		type: 'component',
+		// Data
+		component: modalComponent,
+		title: 'Example Alert',
+		body: 'This is an example modal.',
+		image: 'https://i.imgur.com/WOgTG96.gif',
+	};
+
 	let mapFile: FileList | undefined;
 	let replaceFiles: FileList | undefined;
 	
@@ -39,7 +51,6 @@
 					columns = Object.keys(results.data[0])
 				}
 
-				console.log('Columns:', columns);
 				mapData = results.data;
 			},
 			error: (error) => {
@@ -62,7 +73,15 @@
 		for (let i = 0; i< nodes.length; i++) {
 			const node = nodes[i];
 			if (node instanceof HTMLElement) {
-				replaceText += row[node.innerHTML];
+				const column = node.innerHTML;
+				if (!columns?.includes(column)) {
+					throw new Error(`Column ${column} not found in map file`);
+				}
+				let columnValue = row[node.innerHTML];
+				if (columnValue === undefined || columnValue === null) {
+					columnValue = '';
+				}
+				replaceText += columnValue;
 			} else if (node instanceof Text && node.textContent) {
 				replaceText += node.textContent;
 			}
@@ -75,78 +94,91 @@
 	}
 
 	async function handleReplaceFileChange() {
-	console.log(replaceFiles);
-	if (!replaceFiles) return;
-	if (!replaceDiv || replaceDiv === null) return;
+		console.log(replaceFiles);
+		if (!replaceFiles) return;
+		if (!replaceDiv || replaceDiv === null) return;
 
-	// Create replacements mapping
-	const replacements: Record<string, string> = Object.fromEntries(
-		mapData.map(row => {
-			if (!replaceDiv) throw new Error('replaceDiv is not defined');
-			const replace = createReplaceText(replaceDiv.childNodes, row);
-			const find = row[index];
-			if (!find) throw new Error('Index column not found');
-			return [find, replace];
-		})
-	);
+		// Create replacements mapping
+		const replacements: Record<string, string> = Object.fromEntries(
+			mapData.map(row => {
+				if (!replaceDiv) throw new Error('replaceDiv is not defined');
+				const replace = createReplaceText(replaceDiv.childNodes, row);
+				const find = row[index];
+				if (!find) throw new Error('Index column not found');
+				return [find, replace];
+			})
+		);
 
-	// Compile the regex for find-replace
-	const pattern = new RegExp(Object.keys(replacements).map(find => escapeRegex(find)).join('|'), 'g');
+		// Compile the regex for find-replace
+		const pattern = new RegExp(Object.keys(replacements).map(find => escapeRegex(find)).join('|'), 'g');
 
-	console.log(replacements);
-	console.log(pattern);
+		// Process each file
+		for (let i = 0; i < replaceFiles.length; i++) {
+			const file = replaceFiles[i];
+			const writableStream = streamSaver.createWriteStream(file.name, { size: file.size });
+			const writer = writableStream.getWriter();
+			const reader = file.stream().getReader();
+			const decoder = new TextDecoder(); // Decode binary chunks to string
+			const encoder = new TextEncoder(); // Encode processed text back to binary
 
-	// Process each file
-	for (let i = 0; i < replaceFiles.length; i++) {
-		const file = replaceFiles[i];
-		const writableStream = streamSaver.createWriteStream(file.name, { size: file.size });
-		const writer = writableStream.getWriter();
-		const reader = file.stream().getReader();
-		const decoder = new TextDecoder(); // Decode binary chunks to string
-		const encoder = new TextEncoder(); // Encode processed text back to binary
+			let leftover = ""; // Buffer for accumulating chunks until newline
 
-		let leftover = ""; // Buffer for accumulating chunks until newline
+			try {
+				while (true) {
+					const { value, done } = await reader.read();
+					if (done) break;
 
-		try {
-			while (true) {
-				const { value, done } = await reader.read();
-				if (done) break;
+					// Decode current chunk and append leftover
+					const chunkWithLeftover = leftover + decoder.decode(value, { stream: true });
 
-				// Decode current chunk and append leftover
-				const chunkWithLeftover = leftover + decoder.decode(value, { stream: true });
+					// Split into lines, preserving the last incomplete line in `leftover`
+					const lines = chunkWithLeftover.split("\n");
+					leftover = lines.pop() || ""; // Last line becomes leftover if incomplete
 
-				// Split into lines, preserving the last incomplete line in `leftover`
-				const lines = chunkWithLeftover.split("\n");
-				leftover = lines.pop() || ""; // Last line becomes leftover if incomplete
+					const chunk = lines.join("\n"); // Join lines back together
+					
+					const processedLine = chunk.replace(pattern, match => replacements[match]);
+					const encodedLine = encoder.encode(processedLine + "\n"); // Add newline back
+					await writer.write(encodedLine);
+				}
 
-				const chunk = lines.join("\n"); // Join lines back together
-				
-				const processedLine = chunk.replace(pattern, match => replacements[match]);
-				const encodedLine = encoder.encode(processedLine + "\n"); // Add newline back
-				await writer.write(encodedLine);
+				// Process any remaining leftover text as a final line
+				if (leftover) {
+					const processedLeftover = leftover.replace(pattern, match => replacements[match]);
+					const finalEncodedBytes = encoder.encode(processedLeftover);
+					await writer.write(finalEncodedBytes);
+				}
+			} finally {
+				reader.releaseLock();
+				writer.close();
 			}
-
-			// Process any remaining leftover text as a final line
-			if (leftover) {
-				const processedLeftover = leftover.replace(pattern, match => replacements[match]);
-				const finalEncodedBytes = encoder.encode(processedLeftover);
-				await writer.write(finalEncodedBytes);
-			}
-		} finally {
-			reader.releaseLock();
-			writer.close();
 		}
-	}
 }
 
-
+function resetDropzone() {
+    // get the input element by name 
+    const input = document.getElementsByName('files')[0] as HTMLInputElement;
+    // reset the input element
+    input.value = '';
+    // reset the files
+}
 	
 </script>
 <div class="h-full flex justify-center items-center mx-2">
-	<div class="max-w-2xl w-full">
+	<div class="max-w-2xl space-y-5 w-full">
+	
 	{#if columns === undefined}
-		<div class="flex items-center w-full ">
-			<FileDropzone name="files" accept=".tsv,.csv" on:change={handleFileChange} bind:files={mapFile}>
+		<div class="flex justify-center items-center space-x-2 align-middle">
+			<span class="text-6xl sm:text-8xl">🔎</span> 
+			<span class="text-4xl sm:text-5xl px-4">➡️</span> 
+			<span class="text-6xl sm:text-8xl">✏️</span>
+		</div>
+		<div class="flex align-middle justify-center items-center text-center">
+			<p>Use a CSV/TSV to perform multiple find and replace operations</p>
+			
+		</div>
+		<div class="flex flex-col w-full ">
+			<FileDropzone name="mapFile" accept=".tsv,.csv" on:change={handleFileChange} bind:files={mapFile} >
 				<svelte:fragment slot="lead">
 					<div class="flex justify-center">
 						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="size-16">
@@ -162,17 +194,22 @@
 				</svelte:fragment>
 				<svelte:fragment slot="meta">TSV & CSV allowed.</svelte:fragment>
 			</FileDropzone>
+			<div class="flex justify-end mt-2">
+				<button  type="button" class="text-surface-500 hover:text-surface-400 text-md" on:click={() => modalStore.trigger(helpModal)}>Read the docs</button>
+			</div>
 		</div>
 	{:else}	
-		<div class="space-y-5">
-			<div class="flex justify-end items-end">
-				<button class="text-gray-500 hover:text-primary-500" on:click={() => columns = undefined}>
+			<div class="flex justify-between items-center">
+				<div>
+					Select a column to use as the search value and create a replacement pattern
+				</div>
+				<button class="text-surface-500 hover:text-surface-400" on:click={() => columns = undefined}>
 					<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="size-6">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
 					</svg>				  
 				</button>
 			</div>
-				<FileDropzone name="files" on:change={handleReplaceFileChange} bind:files={replaceFiles}>
+				<FileDropzone name="files" on:change={handleReplaceFileChange} bind:files={replaceFiles} on:click={resetDropzone} on:drop={resetDropzone}>
 					<svelte:fragment slot="lead">
 						<div class="flex justify-center">
 							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="size-16">
@@ -191,7 +228,6 @@
 			<div class="flex space-x-5">
 				<ReplaceBar columns={columns} bind:contenteditableDiv={replaceDiv}/>
 			</div>
-		</div>
 	{/if}
 </div>
 <div class="absolute bottom-0 p-2 text-xs text-gray-500">

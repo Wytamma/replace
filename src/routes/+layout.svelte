@@ -1,5 +1,8 @@
 <script lang="ts">
 	import '../app.postcss';
-</script>
+	import { initializeStores, Modal } from '@skeletonlabs/skeleton';
 
+    initializeStores();
+</script>
+<Modal />
 <slot />
